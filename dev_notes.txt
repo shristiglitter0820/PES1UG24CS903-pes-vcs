@@ -2,3 +2,4 @@ Phase 2: tree_parse decodes binary format with mode, name and hash
 Phase 2: tree_serialize sorts entries by name for deterministic hashing
 Phase 4: head_read resolves symbolic ref to commit hash
 Phase 4: head_read resolves symbolic ref to commit hash
+Phase 4: head_update atomically updates branch pointer using temp+rename
