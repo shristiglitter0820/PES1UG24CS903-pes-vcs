@@ -177,7 +177,35 @@ return 0;
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    char path[512];
+    object_path(id, path, sizeof(path));
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    fseek(f, 0, SEEK_END);
+    size_t total = ftell(f);
+    rewind(f);
+
+    uint8_t *buf = malloc(total);
+    fread(buf, 1, total, f);
+    fclose(f);
+
+    // Parse header — find the \0
+    uint8_t *null_pos = memchr(buf, '\0', total);
+    if (!null_pos) { free(buf); return -1; }
+
+    // Determine type
+    if      (strncmp((char*)buf, "blob",   4) == 0) *type_out = OBJ_BLOB;
+    else if (strncmp((char*)buf, "tree",   4) == 0) *type_out = OBJ_TREE;
+    else if (strncmp((char*)buf, "commit", 6) == 0) *type_out = OBJ_COMMIT;
+    else { free(buf); return -1; }
+
+    // Extract data after the \0
+    size_t hlen = null_pos - buf + 1;
+    *len_out = total - hlen;
+    *data_out = malloc(*len_out);
+    memcpy(*data_out, buf + hlen, *len_out);
+    free(buf);
+    return 0;
 }
