@@ -170,16 +170,19 @@ int index_load(Index *idx) {
 // Returns 0 on success, -1 on error.
 int index_save(const Index *idx) {
     // Sort entries by path
-    Index copy = *idx;
-    for (int i = 0; i < copy.count - 1; i++) {
-        for (int j = i + 1; j < copy.count; j++) {
-            if (strcmp(copy.entries[i].path, copy.entries[j].path) > 0) {
-                IndexEntry tmp = copy.entries[i];
-                copy.entries[i] = copy.entries[j];
-                copy.entries[j] = tmp;
-            }
-        }
-    }
+    Index *copy = malloc(sizeof(Index));
+    if (!copy) return -1;
+    *copy = *idx;
+
+    for (int i = 0; i < copy->count - 1; i++) {
+       for (int j = i + 1; j < copy->count; j++) {
+         if (strcmp(copy->entries[i].path, copy->entries[j].path) > 0) {
+            IndexEntry tmp = copy->entries[i];
+            copy->entries[i] = copy->entries[j];
+            copy->entries[j] = tmp;
+         }
+     }
+   }
 
     // Write to temp file first
     char tmp[512];
@@ -188,17 +191,18 @@ int index_save(const Index *idx) {
     if (!f) return -1;
 
     char hex[HASH_HEX_SIZE + 1];
-    for (int i = 0; i < copy.count; i++) {
-        hash_to_hex(&copy.entries[i].hash, hex);
+    for (int i = 0; i < copy->count; i++) {
+        hash_to_hex(&copy->entries[i].hash, hex);
         fprintf(f, "%o %s %lu %u %s\n",
-                copy.entries[i].mode, hex,
-                copy.entries[i].mtime_sec, copy.entries[i].size,
-                copy.entries[i].path);
+                copy->entries[i].mode, hex,
+                copy->entries[i].mtime_sec, copy->entries[i].size,
+                copy->entries[i].path);
     }
 
     int fd = fileno(f);
     fsync(fd);
     fclose(f);
+    free(copy);
 
     return rename(tmp, INDEX_FILE);
 }
@@ -220,13 +224,18 @@ int index_add(Index *idx, const char *path) {
     fseek(f, 0, SEEK_END);
     size_t sz = ftell(f);
     rewind(f);
-    void *buf = malloc(sz);
-    fread(buf, 1, sz, f);
+    void *buf = malloc(sz + 1);  // +1 to avoid malloc(0)
+    if (!buf) { fclose(f); return -1; }
+    size_t bytes_read = fread(buf, 1, sz, f);
+    (void)bytes_read;
     fclose(f);
 
     // Write blob to object store
     ObjectID id;
-    object_write(OBJ_BLOB, buf, sz, &id);
+    if (object_write(OBJ_BLOB, buf, sz, &id) != 0) {
+        free(buf);
+        return -1;
+    }
     free(buf);
 
     // Get file metadata

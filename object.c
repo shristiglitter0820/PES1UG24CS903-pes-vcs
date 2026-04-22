@@ -97,61 +97,45 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     const char *type_str = (type == OBJ_BLOB) ? "blob" :
                            (type == OBJ_TREE) ? "tree" : "commit";
 
-    // Step 1: Build header "blob 16\0"
     char header[64];
-    int hlen = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1; // +1 for null byte
+    int hlen = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1;
 
-    // Step 2: Combine header + data into one buffer
     size_t total = hlen + len;
-    uint8_t *full = malloc(total);
+    uint8_t *full = malloc(total + 1);
+    if (!full) return -1;
     memcpy(full, header, hlen);
     memcpy(full + hlen, data, len);
 
-    // Step 3: Compute hash of the full object
     compute_hash(full, total, id_out);
 
-// Step 4: Deduplication — if already exists, skip writing
-    if
-    
-    
-    
-     (object_exists(id_out)) {
+    if (object_exists(id_out)) {
         free(full);
         return 0;
     }
 
-    // Step 5: Get the object path and create the shard directory
     char path[512], dirpath[512];
     object_path(id_out, path, sizeof(path));
-
-    // Copy path, then cut off after the last '/' to get just the dir
     strncpy(dirpath, path, sizeof(dirpath));
     char *last_slash = strrchr(dirpath, '/');
     if (last_slash) *last_slash = '\0';
-
     mkdir(dirpath, 0755);
 
-    // Step 6: Write to a temp file, fsync, then rename (atomic)
-char tmppath[512];
-snprintf(tmppath, sizeof(tmppath), "%s.tmp", path);
+    char tmppath[512];
+    snprintf(tmppath, sizeof(tmppath) - 5, "%s.tmp", path);
 
-int fd = open(tmppath, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-if (fd < 0) { free(full); return -1; }
+    int fd = open(tmppath, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) { free(full); return -1; }
+    write(fd, full, total);
+    fsync(fd);
+    close(fd);
+    free(full);
 
-write(fd, full, total);
-fsync(fd);   // flush to disk before rename
-close(fd);
-free(full);
+    rename(tmppath, path);
 
-// Step 7: Atomic rename
-rename(tmppath, path);
+    int dfd = open(dirpath, O_RDONLY);
+    if (dfd >= 0) { fsync(dfd); close(dfd); }
 
-// Step 8: fsync the shard directory to persist the rename
-int dfd = open(dirpath, O_RDONLY);
-if (dfd >= 0) { fsync(dfd); close(dfd); }
-
-return 0;
-
+    return 0;
 }
 
 // Read an object from the store.
