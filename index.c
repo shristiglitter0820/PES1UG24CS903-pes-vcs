@@ -23,6 +23,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+// Forward declaration
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
@@ -210,9 +212,36 @@ int index_save(const Index *idx) {
 //   - index_find                       : checking if the file is already staged
 //
 // Returns 0 on success, -1 on error.
-int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
-    (void)index; (void)path;
-    return -1;
+int index_add(Index *idx, const char *path) {
+    // Read the file contents
+    FILE *f = fopen(path, "rb");
+    if (!f) { fprintf(stderr, "error: cannot open '%s'\n", path); return -1; }
+
+    fseek(f, 0, SEEK_END);
+    size_t sz = ftell(f);
+    rewind(f);
+    void *buf = malloc(sz);
+    fread(buf, 1, sz, f);
+    fclose(f);
+
+    // Write blob to object store
+    ObjectID id;
+    object_write(OBJ_BLOB, buf, sz, &id);
+    free(buf);
+
+    // Get file metadata
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+
+    // Update or insert index entry
+    IndexEntry *e = index_find(idx, path);
+    if (!e) e = &idx->entries[idx->count++];
+
+    strncpy(e->path, path, sizeof(e->path) - 1);
+    e->mode     = 100644;
+    e->size     = (uint32_t)sz;
+    e->mtime_sec = (uint64_t)st.st_mtime;
+    e->hash     = id;
+
+    return index_save(idx);
 }
