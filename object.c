@@ -151,7 +151,7 @@ int dfd = open(dirpath, O_RDONLY);
 if (dfd >= 0) { fsync(dfd); close(dfd); }
 
 return 0;
-}
+
 }
 
 // Read an object from the store.
