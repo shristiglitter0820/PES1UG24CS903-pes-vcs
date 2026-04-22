@@ -110,8 +110,30 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     // Step 3: Compute hash of the full object
     compute_hash(full, total, id_out);
 
-    free(full);
-    return 0; // placeholder, more steps coming
+// Step 4: Deduplication — if already exists, skip writing
+    if
+    
+    
+    
+     (object_exists(id_out)) {
+        free(full);
+        return 0;
+    }
+
+    // Step 5: Get the object path and create the shard directory
+    char path[512], dirpath[512];
+    object_path(id_out, path, sizeof(path));
+
+    // Copy path, then cut off after the last '/' to get just the dir
+    strncpy(dirpath, path, sizeof(dirpath));
+    char *last_slash = strrchr(dirpath, '/');
+    if (last_slash) *last_slash = '\0';
+
+    mkdir(dirpath, 0755);
+
+    free(full);   // will move again in commit 3
+    return 0;     // placeholder, more steps coming
+}
 }
 
 // Read an object from the store.
