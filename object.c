@@ -190,6 +190,14 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     uint8_t *buf = malloc(total);
     fread(buf, 1, total, f);
     fclose(f);
+     // Integrity check: recompute hash and compare
+    ObjectID computed;
+    compute_hash(buf, total, &computed);
+    if (memcmp(computed.hash, id->hash, HASH_SIZE) != 0) {
+        free(buf);
+        return -1; // corrupted object
+    }
+
 
     // Parse header — find the \0
     uint8_t *null_pos = memchr(buf, '\0', total);
