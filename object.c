@@ -131,8 +131,26 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 
     mkdir(dirpath, 0755);
 
-    free(full);   // will move again in commit 3
-    return 0;     // placeholder, more steps coming
+    // Step 6: Write to a temp file, fsync, then rename (atomic)
+char tmppath[512];
+snprintf(tmppath, sizeof(tmppath), "%s.tmp", path);
+
+int fd = open(tmppath, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+if (fd < 0) { free(full); return -1; }
+
+write(fd, full, total);
+fsync(fd);   // flush to disk before rename
+close(fd);
+free(full);
+
+// Step 7: Atomic rename
+rename(tmppath, path);
+
+// Step 8: fsync the shard directory to persist the rename
+int dfd = open(dirpath, O_RDONLY);
+if (dfd >= 0) { fsync(dfd); close(dfd); }
+
+return 0;
 }
 }
 
